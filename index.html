@@ -134,6 +134,27 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .manual-input {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .manual-input h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 18px;
+        }
+        .input-group {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        .info {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin: 5px 0 0;
+        }
     </style>
 </head>
 <body>
@@ -141,6 +162,9 @@
     <div class="summary" id="summary">
         <div class="loading">Carregando dados...</div>
     </div>
+    
+    <div id="erro-container"></div>
+    
     <div class="filters">
         <label for="filtro-funcao">Filtrar por função:</label>
         <select id="filtro-funcao" multiple></select>
@@ -157,25 +181,102 @@
     </footer>
 
     <script>
+        // Verificar se há parâmetros na URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlSheetId = urlParams.get('sheet');
+        
         // URL da API do Google Sheets - Usando formato para CSV público (mais simples)
-        const SHEET_ID = '1_1PhYMBIpG3kS_lLsUD351VuB1J0K2d8';
-        // CSV não precisa de API key, apenas o ID da planilha
-        const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&id=${SHEET_ID}`;
+        // Formato de ID de arquivo de exportação, formato diferente do padrão
+        const SHEET_ID = urlSheetId || '1_1PhYMBIpG3kS_lLsUD351VuB1J0K2d8';
+        // Vamos tentar acessar diretamente usando o link de download
+        const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
         
         console.log("Conectando à planilha:", SHEET_URL);
 
         async function fetchData() {
             try {
-                const response = await fetch(SHEET_URL);
+                console.log("Tentando acessar a planilha via método 1...");
+                let response = await fetch(SHEET_URL);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    console.log("Método 1 falhou, tentando método alternativo 2...");
+                    // Método alternativo para planilhas protegidas ou com formato diferente
+                    const altUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+                    console.log("URL alternativa 2:", altUrl);
+                    response = await fetch(altUrl);
+                    
+                    if (!response.ok) {
+                        console.log("Método 2 falhou, tentando método alternativo 3...");
+                        // Terceiro método usando a API do Google Sheets Explorer
+                        const altUrl3 = `https://spreadsheets.google.com/feeds/download/spreadsheets/Export?key=${SHEET_ID}&exportFormat=csv`;
+                        console.log("URL alternativa 3:", altUrl3);
+                        response = await fetch(altUrl3);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Todos os métodos falharam. Último status: ${response.status}`);
+                        }
+                    }
                 }
+                
                 const text = await response.text();
+                console.log("Amostra dos dados:", text.substring(0, 200) + "...");
                 return parseCSV(text);
             } catch (error) {
                 console.error("Erro ao buscar dados:", error);
                 document.getElementById('summary').innerHTML = 
-                    `<div class="error">Erro ao carregar dados. Por favor, verifique se a planilha está pública.</div>`;
+                    `<div class="error">
+                        <p><strong>Erro ao carregar dados.</strong></p>
+                        <p>Verifique se:</p>
+                        <ul>
+                            <li>A planilha está compartilhada como pública</li>
+                            <li>O ID da planilha está correto</li>
+                            <li>O link de compartilhamento está com permissão de visualização</li>
+                        </ul>
+                        <p>ID usado: ${SHEET_ID}</p>
+                    </div>`;
+                
+                // Adiciona formulário para entrada manual de URL
+                document.getElementById('erro-container').innerHTML = `
+                    <div class="manual-input">
+                        <h3>Tente inserir o link da planilha manualmente:</h3>
+                        <div class="input-group">
+                            <input type="text" id="sheet-url" placeholder="Cole o link de compartilhamento do Google Sheets aqui" style="width:80%; padding:10px; margin-right:10px;">
+                            <button id="load-sheet" style="padding:10px; background:#3498db; color:white; border:none; border-radius:5px; cursor:pointer;">Carregar</button>
+                        </div>
+                        <p class="info">Certifique-se de que a planilha esteja compartilhada como "Qualquer pessoa com o link pode visualizar"</p>
+                    </div>
+                `;
+                
+                // Adiciona evento ao botão
+                document.getElementById('load-sheet').addEventListener('click', function() {
+                    const url = document.getElementById('sheet-url').value.trim();
+                    if (!url) {
+                        alert('Por favor, insira um URL válido');
+                        return;
+                    }
+                    
+                    // Tenta extrair ID da planilha da URL
+                    let newSheetId = '';
+                    try {
+                        const urlObj = new URL(url);
+                        const pathParts = urlObj.pathname.split('/');
+                        // /spreadsheets/d/ID/edit
+                        const idIndex = pathParts.indexOf('d') + 1;
+                        if (idIndex < pathParts.length) {
+                            newSheetId = pathParts[idIndex];
+                            console.log("Novo ID extraído:", newSheetId);
+                            
+                            // Recarrega com novo ID
+                            window.location.href = window.location.href.split('?')[0] + '?sheet=' + newSheetId;
+                        } else {
+                            throw new Error('ID não encontrado na URL');
+                        }
+                    } catch (e) {
+                        console.error("Erro ao processar URL:", e);
+                        alert('URL inválida. Por favor, verifique se é um link de compartilhamento do Google Sheets.');
+                    }
+                });
+                
                 return null;
             }
         }
@@ -222,16 +323,22 @@
                 return; // Se não há dados, sai da função
             }
             
+            console.log("Dados obtidos:", data.length, "linhas");
+            
             // O resto do código continua daqui...
             const headers = data[0];
+            console.log("Cabeçalhos encontrados:", headers);
+            
             const rows = data.slice(1).filter(row => row.length >= 2); // Filtra linhas vazias ou incompletas
+            console.log("Linhas válidas:", rows.length);
             
             // Encontra os índices corretos (tenta diferentes nomes de colunas possíveis)
             const funcaoIndex = headers.findIndex(h => 
                 h && (
                     h.toLowerCase().includes('func') || 
                     h.toLowerCase().includes('cargo') || 
-                    h.toLowerCase().includes('job')
+                    h.toLowerCase().includes('job') ||
+                    h.toLowerCase().includes('profiss')
                 )
             );
             
@@ -239,11 +346,16 @@
                 h && (
                     h.toLowerCase().includes('bruto') || 
                     h.toLowerCase().includes('salario') || 
+                    h.toLowerCase().includes('salário') ||
                     h.toLowerCase().includes('valor') ||
-                    h.toLowerCase().includes('salary')
+                    h.toLowerCase().includes('salary') ||
+                    h.toLowerCase().includes('remuner')
                 )
             );
-
+            
+            console.log("Índices encontrados - Função:", funcaoIndex, "Salário:", salarioIndex);
+            console.log("Exemplos de dados - Função:", rows[0]?.[funcaoIndex], "Salário:", rows[0]?.[salarioIndex]);
+            
             if (funcaoIndex === -1 || salarioIndex === -1) {
                 console.error("Colunas não encontradas:", { 
                     headers, 
@@ -254,7 +366,7 @@
                     `<div class="error">
                         <p><strong>Colunas necessárias não encontradas na planilha.</strong></p>
                         <p>Precisamos de colunas para "FUNÇÃO" (ou similar) e "V. BRUTO" (ou similar).</p>
-                        <p>Colunas encontradas: ${headers.join(', ')}</p>
+                        <p>Colunas encontradas: ${headers.map(h => `"${h}"`).join(', ')}</p>
                         <p>Verifique se a planilha está no formato correto e tente novamente.</p>
                     </div>`;
                 return;
