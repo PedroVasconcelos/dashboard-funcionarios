@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard de Funcionários</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
-    <script src="https://cdn.plotly.js/plotly-2.24.1.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
@@ -160,7 +160,9 @@
         // URL da API do Google Sheets - Usando formato para CSV público (mais simples)
         const SHEET_ID = '1_1PhYMBIpG3kS_lLsUD351VuB1J0K2d8';
         // CSV não precisa de API key, apenas o ID da planilha
-        const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
+        const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&id=${SHEET_ID}`;
+        
+        console.log("Conectando à planilha:", SHEET_URL);
 
         async function fetchData() {
             try {
@@ -180,29 +182,38 @@
 
         // Função para converter CSV em array
         function parseCSV(text) {
-            const lines = text.split('\n');
-            return lines.map(line => {
-                // Tratamento para lidar com vírgulas dentro de aspas
-                const result = [];
-                let inQuotes = false;
-                let currentValue = '';
+            try {
+                console.log("Parsing CSV data...");
+                const lines = text.split('\n').filter(line => line.trim());
+                console.log("Found lines:", lines.length);
                 
-                for (let i = 0; i < line.length; i++) {
-                    const char = line[i];
+                return lines.map(line => {
+                    // Tratamento para lidar com vírgulas dentro de aspas
+                    const result = [];
+                    let inQuotes = false;
+                    let currentValue = '';
                     
-                    if (char === '"') {
-                        inQuotes = !inQuotes;
-                    } else if (char === ',' && !inQuotes) {
-                        result.push(currentValue);
-                        currentValue = '';
-                    } else {
-                        currentValue += char;
+                    for (let i = 0; i < line.length; i++) {
+                        const char = line[i];
+                        
+                        if (char === '"') {
+                            inQuotes = !inQuotes;
+                        } else if ((char === ',' || char === ';') && !inQuotes) {
+                            // Aceita tanto vírgula quanto ponto-e-vírgula como separador
+                            result.push(currentValue.trim());
+                            currentValue = '';
+                        } else {
+                            currentValue += char;
+                        }
                     }
-                }
-                
-                result.push(currentValue);
-                return result;
-            });
+                    
+                    result.push(currentValue.trim());
+                    return result;
+                });
+            } catch (error) {
+                console.error("Erro ao fazer parse do CSV:", error);
+                return []; // Retorna array vazio em caso de erro
+            }
         }
 
         async function createDashboard() {
@@ -216,24 +227,43 @@
             const rows = data.slice(1).filter(row => row.length >= 2); // Filtra linhas vazias ou incompletas
             
             // Encontra os índices corretos (tenta diferentes nomes de colunas possíveis)
-            const funcaoIndex = headers.indexOf('FUNÇÃO') !== -1 ? 
-                               headers.indexOf('FUNÇÃO') : 
-                               headers.findIndex(h => h.includes('FUNC'));
-                               
-            const salarioIndex = headers.indexOf('V. BRUTO') !== -1 ? 
-                                headers.indexOf('V. BRUTO') : 
-                                headers.findIndex(h => h.includes('BRUTO') || h.includes('SALARIO'));
+            const funcaoIndex = headers.findIndex(h => 
+                h && (
+                    h.toLowerCase().includes('func') || 
+                    h.toLowerCase().includes('cargo') || 
+                    h.toLowerCase().includes('job')
+                )
+            );
+            
+            const salarioIndex = headers.findIndex(h => 
+                h && (
+                    h.toLowerCase().includes('bruto') || 
+                    h.toLowerCase().includes('salario') || 
+                    h.toLowerCase().includes('valor') ||
+                    h.toLowerCase().includes('salary')
+                )
+            );
 
             if (funcaoIndex === -1 || salarioIndex === -1) {
+                console.error("Colunas não encontradas:", { 
+                    headers, 
+                    funcaoIndex, 
+                    salarioIndex 
+                });
                 document.getElementById('summary').innerHTML = 
-                    `<div class="error">Colunas necessárias não encontradas na planilha. Precisamos de colunas para "FUNÇÃO" e "V. BRUTO".</div>`;
+                    `<div class="error">
+                        <p><strong>Colunas necessárias não encontradas na planilha.</strong></p>
+                        <p>Precisamos de colunas para "FUNÇÃO" (ou similar) e "V. BRUTO" (ou similar).</p>
+                        <p>Colunas encontradas: ${headers.join(', ')}</p>
+                        <p>Verifique se a planilha está no formato correto e tente novamente.</p>
+                    </div>`;
                 return;
             }
 
             const funcoes = [...new Set(rows.map(row => row[funcaoIndex]).filter(Boolean))];
             const totalFuncionarios = rows.length;
             const totalSalarios = rows.reduce((sum, row) => {
-                const val = parseFloat(row[salarioIndex].replace(/[^\d.-]/g, '')) || 0;
+                const val = row && row[salarioIndex] ? parseFloat(row[salarioIndex].replace(/[^\d.-]/g, '')) || 0 : 0;
                 return sum + val;
             }, 0);
             const mediaSalarial = totalFuncionarios ? totalSalarios / totalFuncionarios : 0;
@@ -285,6 +315,7 @@
             }
 
             const salarios = filteredRows.map(row => {
+                if (!row || !row[salarioIndex]) return 0;
                 const salarioStr = row[salarioIndex] || '0';
                 return parseFloat(salarioStr.replace(/[^\d.-]/g, '')) || 0;
             }).filter(val => !isNaN(val) && val > 0);
