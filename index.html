@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Funcionários</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px; }
+        h1 { text-align: center; color: #2c3e50; }
+        .summary, .filters, .graphs { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .graphs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Dashboard de Funcionários</h1>
+    <div class="summary" id="summary"></div>
+    <div class="filters">
+        <label for="filtro-funcao">Filtrar por função:</label>
+        <select id="filtro-funcao" multiple></select>
+    </div>
+    <div class="graphs">
+        <div id="grafico-salarios"></div>
+        <div id="grafico-funcao"></div>
+    </div>
+
+    <script>
+        const SHEET_ID = '1_1PhYMBIpG3kS_lLsUD351VuB1J0K2d8';
+        const API_KEY = 'AIzaSyDl2pCyVplpnWZ-TvAb3-zGuc7rBPhRGxU';
+        const SHEET_URL = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1?key=${API_KEY}`;
+
+        async function fetchData() {
+            const response = await fetch(SHEET_URL);
+            const data = await response.json();
+            return data.values;
+        }
+
+        async function createDashboard() {
+            const data = await fetchData();
+            const headers = data[0];
+            const rows = data.slice(1);
+
+            const funcaoIndex = headers.indexOf('FUNÇÃO');
+            const salarioIndex = headers.indexOf('V. BRUTO');
+
+            const funcoes = [...new Set(rows.map(row => row[funcaoIndex]))];
+            const totalFuncionarios = rows.length;
+            const totalSalarios = rows.reduce((sum, row) => sum + parseFloat(row[salarioIndex]), 0);
+            const mediaSalarial = totalSalarios / totalFuncionarios;
+
+            document.getElementById('summary').innerHTML = `
+                <div>Total de Funcionários: ${totalFuncionarios}</div>
+                <div>Total da Folha de Pagamento: R$ ${totalSalarios.toFixed(2)}</div>
+                <div>Média Salarial: R$ ${mediaSalarial.toFixed(2)}</div>
+            `;
+
+            const filtroFuncao = document.getElementById('filtro-funcao');
+            funcoes.forEach(funcao => {
+                const option = document.createElement('option');
+                option.value = funcao;
+                option.textContent = funcao;
+                filtroFuncao.appendChild(option);
+            });
+
+            filtroFuncao.addEventListener('change', () => {
+                const selectedFuncoes = Array.from(filtroFuncao.selectedOptions).map(option => option.value);
+                updateCharts(rows, selectedFuncoes, funcaoIndex, salarioIndex);
+            });
+
+            updateCharts(rows, [], funcaoIndex, salarioIndex);
+        }
+
+        function updateCharts(rows, selectedFuncoes, funcaoIndex, salarioIndex) {
+            const filteredRows = selectedFuncoes.length ? rows.filter(row => selectedFuncoes.includes(row[funcaoIndex])) : rows;
+
+            const salarios = filteredRows.map(row => parseFloat(row[salarioIndex]));
+            const trace1 = { x: salarios, type: 'histogram' };
+            Plotly.newPlot('grafico-salarios', [trace1], { title: 'Distribuição Salarial' });
+
+            const funcaoCounts = filteredRows.reduce((acc, row) => {
+                acc[row[funcaoIndex]] = (acc[row[funcaoIndex]] || 0) + 1;
+                return acc;
+            }, {});
+            const trace2 = { x: Object.keys(funcaoCounts), y: Object.values(funcaoCounts), type: 'bar' };
+            Plotly.newPlot('grafico-funcao', [trace2], { title: 'Funcionários por Função' });
+        }
+
+        createDashboard();
+    </script>
+</body>
+</html> 
