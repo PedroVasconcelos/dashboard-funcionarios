@@ -1,20 +1,146 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard de Funcionários</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+    <script src="https://cdn.plotly.js/plotly-2.24.1.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px; }
-        h1 { text-align: center; color: #2c3e50; }
-        .summary, .filters, .graphs { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .graphs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f8f9fa; 
+            padding: 20px; 
+            margin: 0;
+            color: #333;
+        }
+        h1 { 
+            text-align: center; 
+            color: #2c3e50; 
+            margin-bottom: 30px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .summary { 
+            display: flex; 
+            flex-wrap: wrap;
+            justify-content: space-around; 
+            margin-bottom: 30px; 
+            padding: 20px; 
+            background-color: white; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .summary-item { 
+            text-align: center; 
+            padding: 15px;
+            min-width: 200px;
+            flex: 1;
+        }
+        .summary-item h3 {
+            color: #7f8c8d;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .summary-item h4 {
+            color: #2c3e50;
+            font-size: 24px;
+            margin: 0;
+        }
+        .filters { 
+            margin-bottom: 20px; 
+            padding: 20px; 
+            background-color: white; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .filters label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .filters select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            height: 100px; /* Altura para seleção múltipla */
+        }
+        .graphs { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 20px; 
+            margin-bottom: 20px;
+        }
+        .graphs > div { 
+            background-color: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 400px;
+        }
+        .error {
+            color: #e74c3c;
+            padding: 20px;
+            text-align: center;
+            background-color: #fadbd8;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 768px) {
+            .graphs {
+                grid-template-columns: 1fr;
+            }
+            .summary {
+                flex-direction: column;
+            }
+            .summary-item {
+                margin-bottom: 15px;
+            }
+            body {
+                padding: 10px;
+            }
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+            width: 100%;
+            position: relative;
+        }
+        .loading:after {
+            content: '';
+            display: block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #3498db;
+            border-radius: 50%;
+            border-top-color: transparent;
+            margin: 15px auto 0;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
     <h1>Dashboard de Funcionários</h1>
-    <div class="summary" id="summary"></div>
+    <div class="summary" id="summary">
+        <div class="loading">Carregando dados...</div>
+    </div>
     <div class="filters">
         <label for="filtro-funcao">Filtrar por função:</label>
         <select id="filtro-funcao" multiple></select>
@@ -23,43 +149,119 @@
         <div id="grafico-salarios"></div>
         <div id="grafico-funcao"></div>
     </div>
+    
+    <footer>
+        Dashboard criado com HTML, JavaScript e Plotly.js. <br>
+        Dados atualizados automaticamente via Google Sheets. <br>
+        Hospedado gratuitamente no GitHub Pages.
+    </footer>
 
     <script>
+        // URL da API do Google Sheets - Usando formato para CSV público (mais simples)
         const SHEET_ID = '1_1PhYMBIpG3kS_lLsUD351VuB1J0K2d8';
-        const API_KEY = 'AIzaSyDl2pCyVplpnWZ-TvAb3-zGuc7rBPhRGxU';
-        const SHEET_URL = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1?key=${API_KEY}`;
+        // CSV não precisa de API key, apenas o ID da planilha
+        const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
 
         async function fetchData() {
-            const response = await fetch(SHEET_URL);
-            const data = await response.json();
-            return data.values;
+            try {
+                const response = await fetch(SHEET_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const text = await response.text();
+                return parseCSV(text);
+            } catch (error) {
+                console.error("Erro ao buscar dados:", error);
+                document.getElementById('summary').innerHTML = 
+                    `<div class="error">Erro ao carregar dados. Por favor, verifique se a planilha está pública.</div>`;
+                return null;
+            }
+        }
+
+        // Função para converter CSV em array
+        function parseCSV(text) {
+            const lines = text.split('\n');
+            return lines.map(line => {
+                // Tratamento para lidar com vírgulas dentro de aspas
+                const result = [];
+                let inQuotes = false;
+                let currentValue = '';
+                
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(currentValue);
+                        currentValue = '';
+                    } else {
+                        currentValue += char;
+                    }
+                }
+                
+                result.push(currentValue);
+                return result;
+            });
         }
 
         async function createDashboard() {
             const data = await fetchData();
+            if (!data || !data.length) {
+                return; // Se não há dados, sai da função
+            }
+            
+            // O resto do código continua daqui...
             const headers = data[0];
-            const rows = data.slice(1);
+            const rows = data.slice(1).filter(row => row.length >= 2); // Filtra linhas vazias ou incompletas
+            
+            // Encontra os índices corretos (tenta diferentes nomes de colunas possíveis)
+            const funcaoIndex = headers.indexOf('FUNÇÃO') !== -1 ? 
+                               headers.indexOf('FUNÇÃO') : 
+                               headers.findIndex(h => h.includes('FUNC'));
+                               
+            const salarioIndex = headers.indexOf('V. BRUTO') !== -1 ? 
+                                headers.indexOf('V. BRUTO') : 
+                                headers.findIndex(h => h.includes('BRUTO') || h.includes('SALARIO'));
 
-            const funcaoIndex = headers.indexOf('FUNÇÃO');
-            const salarioIndex = headers.indexOf('V. BRUTO');
+            if (funcaoIndex === -1 || salarioIndex === -1) {
+                document.getElementById('summary').innerHTML = 
+                    `<div class="error">Colunas necessárias não encontradas na planilha. Precisamos de colunas para "FUNÇÃO" e "V. BRUTO".</div>`;
+                return;
+            }
 
-            const funcoes = [...new Set(rows.map(row => row[funcaoIndex]))];
+            const funcoes = [...new Set(rows.map(row => row[funcaoIndex]).filter(Boolean))];
             const totalFuncionarios = rows.length;
-            const totalSalarios = rows.reduce((sum, row) => sum + parseFloat(row[salarioIndex]), 0);
-            const mediaSalarial = totalSalarios / totalFuncionarios;
+            const totalSalarios = rows.reduce((sum, row) => {
+                const val = parseFloat(row[salarioIndex].replace(/[^\d.-]/g, '')) || 0;
+                return sum + val;
+            }, 0);
+            const mediaSalarial = totalFuncionarios ? totalSalarios / totalFuncionarios : 0;
 
             document.getElementById('summary').innerHTML = `
-                <div>Total de Funcionários: ${totalFuncionarios}</div>
-                <div>Total da Folha de Pagamento: R$ ${totalSalarios.toFixed(2)}</div>
-                <div>Média Salarial: R$ ${mediaSalarial.toFixed(2)}</div>
+                <div class="summary-item">
+                    <h3>Total de Funcionários</h3>
+                    <h4>${totalFuncionarios}</h4>
+                </div>
+                <div class="summary-item">
+                    <h3>Total da Folha de Pagamento</h3>
+                    <h4>R$ ${totalSalarios.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h4>
+                </div>
+                <div class="summary-item">
+                    <h3>Média Salarial</h3>
+                    <h4>R$ ${mediaSalarial.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h4>
+                </div>
             `;
 
             const filtroFuncao = document.getElementById('filtro-funcao');
+            filtroFuncao.innerHTML = ''; // Limpa o filtro antes de adicionar opções
             funcoes.forEach(funcao => {
-                const option = document.createElement('option');
-                option.value = funcao;
-                option.textContent = funcao;
-                filtroFuncao.appendChild(option);
+                if (funcao) { // Verifica se não é null ou undefined
+                    const option = document.createElement('option');
+                    option.value = funcao;
+                    option.textContent = funcao;
+                    filtroFuncao.appendChild(option);
+                }
             });
 
             filtroFuncao.addEventListener('change', () => {
@@ -71,19 +273,66 @@
         }
 
         function updateCharts(rows, selectedFuncoes, funcaoIndex, salarioIndex) {
-            const filteredRows = selectedFuncoes.length ? rows.filter(row => selectedFuncoes.includes(row[funcaoIndex])) : rows;
+            const filteredRows = selectedFuncoes.length ? 
+                rows.filter(row => row[funcaoIndex] && selectedFuncoes.includes(row[funcaoIndex])) : 
+                rows;
 
-            const salarios = filteredRows.map(row => parseFloat(row[salarioIndex]));
-            const trace1 = { x: salarios, type: 'histogram' };
-            Plotly.newPlot('grafico-salarios', [trace1], { title: 'Distribuição Salarial' });
+            // Garante que temos dados para mostrar
+            if (filteredRows.length === 0) {
+                Plotly.newPlot('grafico-salarios', [], { title: 'Distribuição Salarial (Sem dados)' });
+                Plotly.newPlot('grafico-funcao', [], { title: 'Funcionários por Função (Sem dados)' });
+                return;
+            }
+
+            const salarios = filteredRows.map(row => {
+                const salarioStr = row[salarioIndex] || '0';
+                return parseFloat(salarioStr.replace(/[^\d.-]/g, '')) || 0;
+            }).filter(val => !isNaN(val) && val > 0);
+
+            const trace1 = { 
+                x: salarios, 
+                type: 'histogram',
+                marker: {
+                    color: '#3498db'
+                }
+            };
+            
+            Plotly.newPlot('grafico-salarios', [trace1], { 
+                title: 'Distribuição Salarial',
+                xaxis: { title: 'Salário (R$)' },
+                yaxis: { title: 'Número de Funcionários' }
+            });
 
             const funcaoCounts = filteredRows.reduce((acc, row) => {
-                acc[row[funcaoIndex]] = (acc[row[funcaoIndex]] || 0) + 1;
+                const funcao = row[funcaoIndex];
+                if (funcao) {
+                    acc[funcao] = (acc[funcao] || 0) + 1;
+                }
                 return acc;
             }, {});
-            const trace2 = { x: Object.keys(funcaoCounts), y: Object.values(funcaoCounts), type: 'bar' };
-            Plotly.newPlot('grafico-funcao', [trace2], { title: 'Funcionários por Função' });
+            
+            const trace2 = { 
+                x: Object.keys(funcaoCounts), 
+                y: Object.values(funcaoCounts), 
+                type: 'bar',
+                marker: {
+                    color: '#2ecc71'
+                }
+            };
+            
+            Plotly.newPlot('grafico-funcao', [trace2], { 
+                title: 'Funcionários por Função',
+                xaxis: { title: 'Função' },
+                yaxis: { title: 'Número de Funcionários' }
+            });
         }
+
+        // Adiciona tratamento de erros global
+        window.addEventListener('error', function(e) {
+            console.error('Erro JavaScript:', e.message);
+            document.getElementById('summary').innerHTML = 
+                `<div class="error">Erro no dashboard: ${e.message}. Por favor, atualize a página ou contate o administrador.</div>`;
+        });
 
         createDashboard();
     </script>
